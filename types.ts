@@ -5,6 +5,32 @@ export enum ProductStatus {
   ARCHIVED = 'ARCHIVED'
 }
 
+export enum UserRole {
+  ADMIN = 'ADMIN',
+  MANAGER = 'MANAGER',
+  STAFF = 'STAFF'
+}
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  avatar?: string;
+  status: 'ACTIVE' | 'INVITED' | 'DISABLED';
+  lastActive?: string;
+}
+
+export interface AutomationTask {
+  id: string;
+  name: string;
+  type: 'n8n' | 'WEBHOOK';
+  endpoint: string;
+  schedule: 'REALTIME' | 'HOURLY' | 'DAILY' | 'MANUAL';
+  lastRun?: string;
+  status: 'SUCCESS' | 'FAILED' | 'IDLE' | 'RUNNING';
+}
+
 export interface StoreCredentials {
   apiKey?: string;
   apiSecret?: string;

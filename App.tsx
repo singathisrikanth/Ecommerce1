@@ -10,6 +10,7 @@ import StoreForm from './components/StoreForm';
 import StoreMappingModal from './components/StoreMappingModal';
 import Orders from './components/Orders';
 import OrderDetail from './components/OrderDetail';
+import Settings from './components/Settings';
 
 // Define the TimeRange type here to ensure consistency
 export type TimeRange = 'ALL' | 'TODAY' | 'TOMORROW' | 'DELAYED' | '30D' | '90D' | '180D' | '365D';
@@ -310,6 +311,10 @@ const App: React.FC = () => {
                 </button>
               </div>
             </div>
+          )}
+
+          {currentView === 'SETTINGS' && (
+            <Settings />
           )}
         </div>
       </main>
