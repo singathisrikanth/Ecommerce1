@@ -5,31 +5,94 @@ export enum ProductStatus {
   ARCHIVED = 'ARCHIVED'
 }
 
+export interface StoreCredentials {
+  apiKey?: string;
+  apiSecret?: string;
+  endpoint?: string;
+}
+
 export interface Store {
   id: string;
   name: string;
   location: string;
   type: 'RETAIL' | 'WAREHOUSE' | 'ONLINE';
+  ownership: 'OWN' | 'MARKETPLACE';
+  credentials?: StoreCredentials;
+}
+
+export interface StoreVariantMapping {
+  variantId: string;
+  spid: string;
+  price: number;
+  stock: number;
 }
 
 export interface StoreMapping {
   storeId: string;
-  spid: string; // Store Specific Product ID
+  spid: string;
   price: number;
   stock: number;
   enabled: boolean;
+  variantMappings: StoreVariantMapping[];
+}
+
+export interface ProductVariant {
+  id: string;
+  sku: string;
+  size: string;
+  color: string;
+  priceAdjustment: number;
 }
 
 export interface Product {
-  id: string; // Global Product ID
+  id: string;
   sku: string;
   name: string;
   category: string;
   description: string;
   basePrice: number;
   status: ProductStatus;
+  variants: ProductVariant[];
   mappings: StoreMapping[];
+  images: string[];
   createdAt: string;
 }
 
-export type ViewType = 'DASHBOARD' | 'PRODUCTS' | 'STORES' | 'SETTINGS';
+export interface OrderItem {
+  id: string;
+  productId: string;
+  sku: string;
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+export interface AuditLogEntry {
+  timestamp: string;
+  action: string;
+  user: string;
+}
+
+export interface Order {
+  id: string;
+  externalId: string;
+  storeId: string;
+  customer: string;
+  customerEmail: string;
+  customerAddress: string;
+  date: string;
+  shipBy?: string;
+  total: number;
+  subtotal: number;
+  tax: number;
+  discount: number;
+  itemCount: number;
+  status: 'PENDING' | 'PAID' | 'SHIPPED' | 'CANCELLED';
+  packingType: string;
+  trackingNumber?: string;
+  fulfilledOnSource?: boolean;
+  items: OrderItem[];
+  history: AuditLogEntry[];
+}
+
+export type ViewType = 'DASHBOARD' | 'PRODUCTS' | 'STORES' | 'ORDERS' | 'ORDER_DETAIL' | 'SETTINGS';
