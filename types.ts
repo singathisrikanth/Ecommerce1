@@ -121,4 +121,4 @@ export interface Order {
   history: AuditLogEntry[];
 }
 
-export type ViewType = 'DASHBOARD' | 'PRODUCTS' | 'STORES' | 'ORDERS' | 'ORDER_DETAIL' | 'SETTINGS';
+export type ViewType = 'DASHBOARD' | 'PRODUCTS' | 'PRODUCT_DETAIL' | 'STORES' | 'ORDERS' | 'ORDER_DETAIL' | 'SETTINGS';

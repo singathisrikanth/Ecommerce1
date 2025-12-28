@@ -11,6 +11,7 @@ import StoreMappingModal from './components/StoreMappingModal';
 import Orders from './components/Orders';
 import OrderDetail from './components/OrderDetail';
 import Settings from './components/Settings';
+import ProductDetail from './components/ProductDetail';
 
 // Define the TimeRange type here to ensure consistency
 export type TimeRange = 'ALL' | 'TODAY' | 'TOMORROW' | 'DELAYED' | '30D' | '90D' | '180D' | '365D';
@@ -32,6 +33,7 @@ const App: React.FC = () => {
   const [stores, setStores] = useState<Store[]>(INITIAL_STORES);
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
   // Orders View filter state - lifted to allow control from Dashboard
   const [orderTimeRange, setOrderTimeRange] = useState<TimeRange>('ALL');
@@ -77,8 +79,11 @@ const App: React.FC = () => {
   };
 
   const handleAddProduct = (newProduct: Product) => {
-    if (editingProduct) {
-      setProducts(prev => prev.map(p => p.id === editingProduct.id ? newProduct : p));
+    if (editingProduct || selectedProduct) {
+      setProducts(prev => prev.map(p => p.id === (editingProduct?.id || selectedProduct?.id) ? newProduct : p));
+      if (selectedProduct?.id === newProduct.id) {
+        setSelectedProduct(newProduct);
+      }
     } else {
       const automatedMappings: StoreMapping[] = stores.map(store => {
         const baseSpid = generateSPID(store.id, newProduct.sku, newProduct.id);
@@ -119,11 +124,22 @@ const App: React.FC = () => {
   const handleDeleteProduct = (id: string) => {
     if (confirm('Are you sure you want to delete this product? All store mappings will be lost.')) {
       setProducts(prev => prev.filter(p => p.id !== id));
+      if (selectedProduct?.id === id) {
+        setCurrentView('PRODUCTS');
+        setSelectedProduct(null);
+      }
     }
   };
 
   const handleUpdateMappings = (productId: string, mappings: StoreMapping[]) => {
-    setProducts(prev => prev.map(p => p.id === productId ? { ...p, mappings } : p));
+    setProducts(prev => prev.map(p => {
+      if (p.id !== productId) return p;
+      const updated = { ...p, mappings };
+      if (selectedProduct?.id === productId) {
+        setSelectedProduct(updated);
+      }
+      return updated;
+    }));
     setIsMappingModalOpen(false);
     setMappingProduct(null);
   };
@@ -131,10 +147,14 @@ const App: React.FC = () => {
   const handleToggleMapping = (productId: string, storeId: string) => {
     setProducts(prev => prev.map(p => {
       if (p.id !== productId) return p;
-      return {
+      const updated = {
         ...p,
         mappings: p.mappings.map(m => m.storeId === storeId ? { ...m, enabled: !m.enabled } : m)
       };
+      if (selectedProduct?.id === productId) {
+        setSelectedProduct(updated);
+      }
+      return updated;
     }));
   };
 
@@ -150,6 +170,11 @@ const App: React.FC = () => {
     setCurrentView('ORDER_DETAIL');
   };
 
+  const handleViewProduct = (product: Product) => {
+    setSelectedProduct(product);
+    setCurrentView('PRODUCT_DETAIL');
+  };
+
   const handleNavigateToOrders = (range: TimeRange) => {
     setOrderTimeRange(range);
     setCurrentView('ORDERS');
@@ -159,6 +184,9 @@ const App: React.FC = () => {
     setCurrentView(view);
     if (view !== 'ORDER_DETAIL') {
       setSelectedOrder(null);
+    }
+    if (view !== 'PRODUCT_DETAIL') {
+      setSelectedProduct(null);
     }
     // If manually navigating to orders, default to ALL unless set via dashboard
     if (view === 'ORDERS' && currentView !== 'DASHBOARD') {
@@ -174,7 +202,9 @@ const App: React.FC = () => {
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shrink-0">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-semibold text-gray-800">
-              {currentView === 'ORDER_DETAIL' ? `Order Details: ${selectedOrder?.externalId}` : currentView.charAt(0) + currentView.slice(1).toLowerCase()}
+              {currentView === 'ORDER_DETAIL' ? `Order Details: ${selectedOrder?.externalId}` : 
+               currentView === 'PRODUCT_DETAIL' ? `Product Details: ${selectedProduct?.sku}` :
+               currentView.charAt(0) + currentView.slice(1).toLowerCase().replace('_detail', ' Details')}
             </h1>
             <div className="hidden md:flex relative">
               <ICONS.Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -200,7 +230,7 @@ const App: React.FC = () => {
                 <ICONS.Plus className="w-4 h-4" />
                 Connect Store
               </button>
-             ) : currentView === 'PRODUCTS' ? (
+             ) : (currentView === 'PRODUCTS' || currentView === 'DASHBOARD') ? (
                <button 
                 onClick={() => {
                   setEditingProduct(null);
@@ -250,6 +280,7 @@ const App: React.FC = () => {
             <ProductList 
               products={filteredProducts} 
               stores={stores}
+              onViewProduct={handleViewProduct}
               onEdit={(p) => {
                 setEditingProduct(p);
                 setIsProductModalOpen(true);
@@ -260,6 +291,23 @@ const App: React.FC = () => {
                 setIsMappingModalOpen(true);
               }}
               onToggleMapping={handleToggleMapping}
+            />
+          )}
+
+          {currentView === 'PRODUCT_DETAIL' && selectedProduct && (
+            <ProductDetail 
+              product={selectedProduct}
+              stores={stores}
+              onBack={() => setCurrentView('PRODUCTS')}
+              onEdit={() => {
+                setEditingProduct(selectedProduct);
+                setIsProductModalOpen(true);
+              }}
+              onMap={() => {
+                setMappingProduct(selectedProduct);
+                setIsMappingModalOpen(true);
+              }}
+              onToggleMapping={(storeId) => handleToggleMapping(selectedProduct.id, storeId)}
             />
           )}
 
