@@ -13,12 +13,14 @@ import OrderDetail from './components/OrderDetail';
 import Settings from './components/Settings';
 import ProductDetail from './components/ProductDetail';
 import Login from './components/Login';
+import { Menu, X } from 'lucide-react';
 
 export type TimeRange = 'ALL' | 'TODAY' | 'TOMORROW' | 'DELAYED' | '30D' | '90D' | '180D' | '365D';
 
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentView, setCurrentView] = useState<ViewType>('DASHBOARD');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS.map(p => ({
     ...p,
     mappings: p.mappings.map(m => ({
@@ -67,6 +69,13 @@ const App: React.FC = () => {
     }
     return list;
   }, [stores, storeFilter, searchQuery]);
+
+  const handleUpdateProduct = (updatedProduct: Product) => {
+    setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+    if (selectedProduct?.id === updatedProduct.id) {
+      setSelectedProduct(updatedProduct);
+    }
+  };
 
   const handleCombineOrders = (orderIds: string[]) => {
     const selected = orders.filter(o => orderIds.includes(o.id));
@@ -182,6 +191,7 @@ const App: React.FC = () => {
 
   const handleViewChange = (view: ViewType) => {
     setCurrentView(view);
+    setIsSidebarOpen(false); // Auto-close on mobile
     if (view !== 'ORDER_DETAIL') setSelectedOrder(null);
     if (view !== 'PRODUCT_DETAIL') setSelectedProduct(null);
     if (view === 'ORDERS' && currentView !== 'DASHBOARD') setOrderTimeRange('ALL');
@@ -193,49 +203,61 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
-      <Sidebar currentView={currentView} onViewChange={handleViewChange} onLogout={() => setIsLoggedIn(false)} />
+      <Sidebar 
+        currentView={currentView} 
+        onViewChange={handleViewChange} 
+        onLogout={() => setIsLoggedIn(false)} 
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+      />
 
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shrink-0">
+        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-8 shrink-0">
           <div className="flex items-center gap-4">
-            <h1 className="text-xl font-semibold text-gray-800">
-              {currentView === 'ORDER_DETAIL' ? `Order Details: ${selectedOrder?.externalId}` : 
-               currentView === 'PRODUCT_DETAIL' ? `Product Details: ${selectedProduct?.sku}` :
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg text-slate-600"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <h1 className="text-lg lg:text-xl font-semibold text-gray-800 truncate">
+              {currentView === 'ORDER_DETAIL' ? `Order: ${selectedOrder?.externalId}` : 
+               currentView === 'PRODUCT_DETAIL' ? `Product: ${selectedProduct?.sku}` :
                currentView.charAt(0) + currentView.slice(1).toLowerCase().replace('_detail', ' Details')}
             </h1>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 lg:gap-3">
              {currentView === 'ORDERS' && (
                <button 
                 onClick={handleImportMarketplaceOrders}
-                className="flex items-center gap-2 bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                className="flex items-center gap-2 bg-slate-900 hover:bg-black text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg text-xs lg:text-sm font-medium transition-colors shadow-sm"
               >
-                <ICONS.Import className="w-4 h-4" />
-                Import Marketplaces
+                <ICONS.Import className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                <span className="hidden sm:inline">Import</span>
               </button>
              )}
              {currentView === 'STORES' ? (
                <button 
                 onClick={() => { setEditingStore(null); setIsStoreModalOpen(true); }}
-                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg text-xs lg:text-sm font-medium transition-colors shadow-sm"
               >
-                <ICONS.Plus className="w-4 h-4" />
-                Connect Store
+                <ICONS.Plus className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                <span className="hidden sm:inline">Connect</span>
               </button>
              ) : (currentView === 'PRODUCTS' || currentView === 'DASHBOARD') ? (
                <button 
                 onClick={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg text-xs lg:text-sm font-medium transition-colors shadow-sm"
               >
-                <ICONS.Plus className="w-4 h-4" />
-                New Product
+                <ICONS.Plus className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                <span className="hidden sm:inline">New Product</span>
               </button>
              ) : null}
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
           {currentView === 'DASHBOARD' && (
             <Dashboard 
               products={products} 
@@ -287,6 +309,7 @@ const App: React.FC = () => {
               onBack={() => setCurrentView('PRODUCTS')}
               onEdit={() => { setEditingProduct(selectedProduct); setIsProductModalOpen(true); }}
               onMap={() => { setMappingProduct(selectedProduct); setIsMappingModalOpen(true); }}
+              onUpdateProduct={handleUpdateProduct}
               onToggleMapping={(storeId) => {}}
             />
           )}

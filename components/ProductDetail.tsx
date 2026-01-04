@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Product, Store, StoreMapping, ProductStatus } from '../types';
 import { ICONS } from '../constants';
+import { gemini } from '../services/geminiService';
 
 interface ProductDetailProps {
   product: Product;
@@ -9,11 +10,13 @@ interface ProductDetailProps {
   onBack: () => void;
   onEdit: () => void;
   onMap: () => void;
+  onUpdateProduct: (product: Product) => void;
   onToggleMapping: (storeId: string) => void;
 }
 
-const ProductDetail: React.FC<ProductDetailProps> = ({ product, stores, onBack, onEdit, onMap, onToggleMapping }) => {
+const ProductDetail: React.FC<ProductDetailProps> = ({ product, stores, onBack, onEdit, onMap, onUpdateProduct, onToggleMapping }) => {
   const [syncingStoreId, setSyncingStoreId] = useState<string | null>(null);
+  const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
 
   const getStoreName = (storeId: string) => stores.find(s => s.id === storeId)?.name || storeId;
 
@@ -21,6 +24,20 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ product, stores, onBack, 
     setSyncingStoreId(storeId);
     await new Promise(resolve => setTimeout(resolve, 2000));
     setSyncingStoreId(null);
+  };
+
+  const handleGenerateAIDescription = async () => {
+    setIsGeneratingDesc(true);
+    try {
+      const newDescription = await gemini.generateDescription(product.name, product.category);
+      const updatedProduct = { ...product, description: newDescription };
+      onUpdateProduct(updatedProduct);
+    } catch (error) {
+      console.error("Failed to generate description:", error);
+      alert("AI generation failed. Please try again.");
+    } finally {
+      setIsGeneratingDesc(false);
+    }
   };
 
   const totalInventory = product.mappings.reduce((acc, m) => acc + (m.variantMappings?.reduce((sum, vm) => sum + vm.stock, 0) || m.stock), 0);
@@ -53,7 +70,13 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ product, stores, onBack, 
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="p-1">
-              <img src={product.images[0]} alt={product.name} className="w-full aspect-square object-cover rounded-[22px]" />
+              {product.images?.[0] ? (
+                <img src={product.images[0]} alt={product.name} className="w-full aspect-square object-cover rounded-[22px]" />
+              ) : (
+                <div className="w-full aspect-square bg-gray-100 rounded-[22px] flex items-center justify-center text-gray-400">
+                  <ICONS.Products className="w-12 h-12" />
+                </div>
+              )}
             </div>
             <div className="p-6 space-y-4">
               <div>
@@ -82,12 +105,41 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ product, stores, onBack, 
                       <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                   ))}
+                  {product.images.length <= 1 && (
+                    <div className="col-span-2 py-6 text-center text-xs text-gray-400 italic bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                      No AI previews generated yet.
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="pt-4 border-t border-gray-50">
-                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Global Description</p>
-                 <p className="text-sm text-gray-600 leading-relaxed italic">"{product.description}"</p>
+                 <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Global Description</p>
+                    <button 
+                      onClick={handleGenerateAIDescription}
+                      disabled={isGeneratingDesc}
+                      className="text-[10px] font-black text-blue-600 uppercase flex items-center gap-1 hover:text-blue-700 disabled:opacity-50"
+                    >
+                      {isGeneratingDesc ? (
+                        <div className="w-2.5 h-2.5 border-2 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
+                      ) : (
+                        <ICONS.Marketplace className="w-3 h-3" />
+                      )}
+                      {product.description ? 'Regenerate AI' : 'Generate AI'}
+                    </button>
+                 </div>
+                 {isGeneratingDesc ? (
+                    <div className="space-y-2 animate-pulse">
+                      <div className="h-3 bg-gray-200 rounded w-full"></div>
+                      <div className="h-3 bg-gray-200 rounded w-5/6"></div>
+                      <div className="h-3 bg-gray-200 rounded w-4/6"></div>
+                    </div>
+                 ) : (
+                    <p className="text-sm text-gray-600 leading-relaxed italic">
+                      {product.description ? `"${product.description}"` : "No description available."}
+                    </p>
+                 )}
               </div>
             </div>
           </div>
