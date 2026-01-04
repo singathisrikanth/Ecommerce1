@@ -3,6 +3,10 @@ import React, { useState } from 'react';
 import { ICONS } from '../constants';
 import { UserRole, AdminUser, AutomationTask } from '../types';
 
+interface SettingsProps {
+  onLogout?: () => void;
+}
+
 const INITIAL_USERS: AdminUser[] = [
   { id: 'u1', name: 'Srikanth Varma', email: 'srikanth@unified.com', role: UserRole.ADMIN, status: 'ACTIVE', lastActive: new Date().toISOString() },
   { id: 'u2', name: 'Jane Smith', email: 'jane@unified.com', role: UserRole.MANAGER, status: 'ACTIVE', lastActive: new Date(Date.now() - 3600000).toISOString() },
@@ -14,7 +18,7 @@ const INITIAL_AUTOMATIONS: AutomationTask[] = [
   { id: 'a2', name: 'Inventory Reconciler', type: 'n8n', endpoint: 'https://n8n.my-store.com/webhook/reconcile', schedule: 'DAILY', status: 'IDLE' },
 ];
 
-const Settings: React.FC = () => {
+const Settings: React.FC<SettingsProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<'TEAM' | 'SECURITY' | 'AUTOMATION'>('TEAM');
   const [users, setUsers] = useState<AdminUser[]>(INITIAL_USERS);
   const [automations, setAutomations] = useState<AutomationTask[]>(INITIAL_AUTOMATIONS);
@@ -260,6 +264,24 @@ const Settings: React.FC = () => {
                       </button>
                     )}
                   </div>
+                </div>
+              </section>
+
+              {/* Added Logout Section */}
+              <section className="space-y-4 pt-4">
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Account Actions</h4>
+                <div className="p-6 bg-red-50 border border-red-100 rounded-3xl flex flex-col items-start gap-4">
+                  <div>
+                    <p className="font-bold text-red-900">Session Management</p>
+                    <p className="text-sm text-red-600/80">End your current session safely.</p>
+                  </div>
+                  <button 
+                    onClick={onLogout}
+                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-red-600/20 transition-all"
+                  >
+                    <ICONS.Power className="w-4 h-4" />
+                    Logout from this Device
+                  </button>
                 </div>
               </section>
 

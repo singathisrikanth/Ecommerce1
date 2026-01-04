@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { ViewType, Product, Store, ProductStatus, StoreMapping, StoreVariantMapping, Order } from './types';
+import { ViewType, Product, Store, ProductStatus, StoreMapping, StoreVariantMapping, Order, OrderItem } from './types';
 import { INITIAL_PRODUCTS, INITIAL_STORES, INITIAL_ORDERS, ICONS } from './constants';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -12,11 +12,12 @@ import Orders from './components/Orders';
 import OrderDetail from './components/OrderDetail';
 import Settings from './components/Settings';
 import ProductDetail from './components/ProductDetail';
+import Login from './components/Login';
 
-// Define the TimeRange type here to ensure consistency
 export type TimeRange = 'ALL' | 'TODAY' | 'TOMORROW' | 'DELAYED' | '30D' | '90D' | '180D' | '365D';
 
 const App: React.FC = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentView, setCurrentView] = useState<ViewType>('DASHBOARD');
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS.map(p => ({
     ...p,
@@ -35,10 +36,8 @@ const App: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
-  // Orders View filter state - lifted to allow control from Dashboard
   const [orderTimeRange, setOrderTimeRange] = useState<TimeRange>('ALL');
   
-  // UI States
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
   const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
@@ -48,8 +47,6 @@ const App: React.FC = () => {
   const [mappingProduct, setMappingProduct] = useState<Product | null>(null);
   
   const [storeFilter, setStoreFilter] = useState<'ALL' | 'OWN' | 'MARKETPLACE'>('ALL');
-
-  // Filters
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredProducts = useMemo(() => {
@@ -71,91 +68,94 @@ const App: React.FC = () => {
     return list;
   }, [stores, storeFilter, searchQuery]);
 
-  const generateSPID = (storeId: string, productSku: string, productId: string, variantSku?: string) => {
-    const storeCode = storeId.split('_')[1] || storeId.substring(0, 3).toUpperCase();
-    const productPart = variantSku || productSku || productId.substring(0, 5);
-    const suffix = Math.random().toString(36).substring(2, 5).toUpperCase();
-    return `${storeCode}-${productPart}-${suffix}`;
-  };
+  const handleCombineOrders = (orderIds: string[]) => {
+    const selected = orders.filter(o => orderIds.includes(o.id));
+    if (selected.length < 2) return;
 
-  const handleAddProduct = (newProduct: Product) => {
-    if (editingProduct || selectedProduct) {
-      setProducts(prev => prev.map(p => p.id === (editingProduct?.id || selectedProduct?.id) ? newProduct : p));
-      if (selectedProduct?.id === newProduct.id) {
-        setSelectedProduct(newProduct);
-      }
-    } else {
-      const automatedMappings: StoreMapping[] = stores.map(store => {
-        const baseSpid = generateSPID(store.id, newProduct.sku, newProduct.id);
-        const variantMappings: StoreVariantMapping[] = newProduct.variants.map(variant => ({
-          variantId: variant.id,
-          spid: generateSPID(store.id, variant.sku, newProduct.id),
-          price: newProduct.basePrice + variant.priceAdjustment,
-          stock: 1000 
-        }));
+    // Check if they are compatible (same customer/email)
+    const first = selected[0];
+    const isCompatible = selected.every(o => o.customerEmail === first.customerEmail);
 
-        return {
-          storeId: store.id,
-          spid: baseSpid,
-          price: newProduct.basePrice,
-          stock: variantMappings.length > 0 ? variantMappings.reduce((sum, vm) => sum + vm.stock, 0) : 1000,
-          enabled: true,
-          variantMappings
-        };
-      });
-
-      const productWithMappings = { ...newProduct, mappings: automatedMappings };
-      setProducts(prev => [...prev, productWithMappings]);
+    if (!isCompatible) {
+      alert("Cannot combine: Orders must belong to the same customer email.");
+      return;
     }
-    setIsProductModalOpen(false);
-    setEditingProduct(null);
+
+    const mergedItems: OrderItem[] = selected.flatMap(o => o.items).reduce((acc: OrderItem[], item) => {
+      const existing = acc.find(i => i.sku === item.sku);
+      if (existing) {
+        existing.quantity += item.quantity;
+      } else {
+        acc.push({ ...item });
+      }
+      return acc;
+    }, []);
+
+    const masterId = `ord_merged_${Math.random().toString(36).substring(2, 6)}`;
+    const combinedOrder: Order = {
+      id: masterId,
+      externalId: selected.map(o => o.externalId).join('+'),
+      storeId: 'st_multi',
+      customer: first.customer,
+      customerEmail: first.customerEmail,
+      customerAddress: first.customerAddress,
+      date: new Date().toISOString(),
+      shipBy: selected.find(o => o.shipBy)?.shipBy,
+      total: selected.reduce((sum, o) => sum + o.total, 0),
+      subtotal: selected.reduce((sum, o) => sum + o.subtotal, 0),
+      tax: selected.reduce((sum, o) => sum + o.tax, 0),
+      discount: selected.reduce((sum, o) => sum + o.discount, 0),
+      itemCount: mergedItems.reduce((sum, i) => sum + i.quantity, 0),
+      status: 'PAID',
+      packingType: 'Combined Large Box',
+      isCombined: true,
+      sourceOrderIds: orderIds,
+      items: mergedItems,
+      history: [
+        { timestamp: new Date().toISOString(), action: `Combined from ${selected.length} source orders`, user: 'srikanth varma' },
+        ...selected.flatMap(o => o.history)
+      ]
+    };
+
+    setOrders(prev => [combinedOrder, ...prev.filter(o => !orderIds.includes(o.id))]);
+    alert(`Success: ${selected.length} orders merged into single shipment ${masterId}`);
   };
 
-  const handleAddStore = (newStore: Store) => {
-    if (editingStore) {
-      setStores(prev => prev.map(s => s.id === editingStore.id ? newStore : s));
-    } else {
-      setStores(prev => [...prev, newStore]);
+  const handleImportMarketplaceOrders = async () => {
+    // Simulated smart import logic
+    const newOrders: Order[] = [
+      {
+        id: `ord_imp_${Math.random().toString(36).substring(2, 6)}`,
+        externalId: 'AMZ-5521',
+        storeId: 'st_003',
+        customer: 'Alice Smith',
+        customerEmail: 'alice@example.com',
+        customerAddress: '123 Maple Ave, Springfield, IL 62704',
+        date: new Date().toISOString(),
+        shipBy: new Date().toISOString(),
+        total: 45.00,
+        subtotal: 40.00,
+        tax: 5.00,
+        discount: 0,
+        itemCount: 1,
+        status: 'PAID',
+        packingType: 'Standard Box',
+        items: [{ id: 'oi_imp1', productId: 'prod_9k2m1', sku: 'EL-LPT-01-SLV', name: 'Laptop Stand', quantity: 1, price: 40.00 }],
+        history: [{ timestamp: new Date().toISOString(), action: 'Imported from Amazon', user: 'System Sync' }]
+      }
+    ];
+
+    setOrders(prev => [...newOrders, ...prev]);
+    
+    // Auto-detect consolidation potential
+    const existingForAlice = orders.find(o => o.customerEmail === 'alice@example.com' && o.status !== 'SHIPPED');
+    if (existingForAlice) {
+      setTimeout(() => {
+        if (confirm(`Consolidation detected! New order AMZ-5521 can be combined with existing order for Alice Smith. Combine now?`)) {
+           handleCombineOrders([existingForAlice.id, newOrders[0].id]);
+        }
+      }, 500);
     }
-    setIsStoreModalOpen(false);
-    setEditingStore(null);
-  };
-
-  const handleDeleteProduct = (id: string) => {
-    if (confirm('Are you sure you want to delete this product? All store mappings will be lost.')) {
-      setProducts(prev => prev.filter(p => p.id !== id));
-      if (selectedProduct?.id === id) {
-        setCurrentView('PRODUCTS');
-        setSelectedProduct(null);
-      }
-    }
-  };
-
-  const handleUpdateMappings = (productId: string, mappings: StoreMapping[]) => {
-    setProducts(prev => prev.map(p => {
-      if (p.id !== productId) return p;
-      const updated = { ...p, mappings };
-      if (selectedProduct?.id === productId) {
-        setSelectedProduct(updated);
-      }
-      return updated;
-    }));
-    setIsMappingModalOpen(false);
-    setMappingProduct(null);
-  };
-
-  const handleToggleMapping = (productId: string, storeId: string) => {
-    setProducts(prev => prev.map(p => {
-      if (p.id !== productId) return p;
-      const updated = {
-        ...p,
-        mappings: p.mappings.map(m => m.storeId === storeId ? { ...m, enabled: !m.enabled } : m)
-      };
-      if (selectedProduct?.id === productId) {
-        setSelectedProduct(updated);
-      }
-      return updated;
-    }));
   };
 
   const handleUpdateOrder = (updatedOrder: Order) => {
@@ -182,21 +182,18 @@ const App: React.FC = () => {
 
   const handleViewChange = (view: ViewType) => {
     setCurrentView(view);
-    if (view !== 'ORDER_DETAIL') {
-      setSelectedOrder(null);
-    }
-    if (view !== 'PRODUCT_DETAIL') {
-      setSelectedProduct(null);
-    }
-    // If manually navigating to orders, default to ALL unless set via dashboard
-    if (view === 'ORDERS' && currentView !== 'DASHBOARD') {
-      setOrderTimeRange('ALL');
-    }
+    if (view !== 'ORDER_DETAIL') setSelectedOrder(null);
+    if (view !== 'PRODUCT_DETAIL') setSelectedProduct(null);
+    if (view === 'ORDERS' && currentView !== 'DASHBOARD') setOrderTimeRange('ALL');
   };
+
+  if (!isLoggedIn) {
+    return <Login onLogin={() => setIsLoggedIn(true)} />;
+  }
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
-      <Sidebar currentView={currentView} onViewChange={handleViewChange} />
+      <Sidebar currentView={currentView} onViewChange={handleViewChange} onLogout={() => setIsLoggedIn(false)} />
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shrink-0">
@@ -206,25 +203,21 @@ const App: React.FC = () => {
                currentView === 'PRODUCT_DETAIL' ? `Product Details: ${selectedProduct?.sku}` :
                currentView.charAt(0) + currentView.slice(1).toLowerCase().replace('_detail', ' Details')}
             </h1>
-            <div className="hidden md:flex relative">
-              <ICONS.Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input 
-                type="text" 
-                placeholder="Search globally..." 
-                className="pl-10 pr-4 py-1.5 bg-gray-100 border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-lg text-sm transition-all w-64"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
           </div>
           
           <div className="flex items-center gap-3">
+             {currentView === 'ORDERS' && (
+               <button 
+                onClick={handleImportMarketplaceOrders}
+                className="flex items-center gap-2 bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+              >
+                <ICONS.Import className="w-4 h-4" />
+                Import Marketplaces
+              </button>
+             )}
              {currentView === 'STORES' ? (
                <button 
-                onClick={() => {
-                  setEditingStore(null);
-                  setIsStoreModalOpen(true);
-                }}
+                onClick={() => { setEditingStore(null); setIsStoreModalOpen(true); }}
                 className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
                 <ICONS.Plus className="w-4 h-4" />
@@ -232,10 +225,7 @@ const App: React.FC = () => {
               </button>
              ) : (currentView === 'PRODUCTS' || currentView === 'DASHBOARD') ? (
                <button 
-                onClick={() => {
-                  setEditingProduct(null);
-                  setIsProductModalOpen(true);
-                }}
+                onClick={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
                 <ICONS.Plus className="w-4 h-4" />
@@ -263,6 +253,7 @@ const App: React.FC = () => {
               orders={orders} 
               onViewOrder={handleViewOrder} 
               onUpdateOrder={handleUpdateOrder}
+              onCombineOrders={handleCombineOrders}
               initialTimeRange={orderTimeRange}
             />
           )}
@@ -271,6 +262,7 @@ const App: React.FC = () => {
             <OrderDetail 
               order={selectedOrder} 
               stores={stores} 
+              orders={orders}
               onBack={() => setCurrentView('ORDERS')} 
               onUpdateOrder={handleUpdateOrder}
             />
@@ -281,16 +273,10 @@ const App: React.FC = () => {
               products={filteredProducts} 
               stores={stores}
               onViewProduct={handleViewProduct}
-              onEdit={(p) => {
-                setEditingProduct(p);
-                setIsProductModalOpen(true);
-              }}
-              onDelete={handleDeleteProduct}
-              onMap={(p) => {
-                setMappingProduct(p);
-                setIsMappingModalOpen(true);
-              }}
-              onToggleMapping={handleToggleMapping}
+              onEdit={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
+              onDelete={(id) => setProducts(prev => prev.filter(p => p.id !== id))}
+              onMap={(p) => { setMappingProduct(p); setIsMappingModalOpen(true); }}
+              onToggleMapping={(pid, sid) => {}}
             />
           )}
 
@@ -299,83 +285,32 @@ const App: React.FC = () => {
               product={selectedProduct}
               stores={stores}
               onBack={() => setCurrentView('PRODUCTS')}
-              onEdit={() => {
-                setEditingProduct(selectedProduct);
-                setIsProductModalOpen(true);
-              }}
-              onMap={() => {
-                setMappingProduct(selectedProduct);
-                setIsMappingModalOpen(true);
-              }}
-              onToggleMapping={(storeId) => handleToggleMapping(selectedProduct.id, storeId)}
+              onEdit={() => { setEditingProduct(selectedProduct); setIsProductModalOpen(true); }}
+              onMap={() => { setMappingProduct(selectedProduct); setIsMappingModalOpen(true); }}
+              onToggleMapping={(storeId) => {}}
             />
           )}
 
           {currentView === 'STORES' && (
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="bg-white p-1 rounded-xl border border-gray-200 inline-flex shadow-sm self-start">
-                  <button onClick={() => setStoreFilter('ALL')} className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${storeFilter === 'ALL' ? 'bg-slate-800 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}>All Stores</button>
-                  <button onClick={() => setStoreFilter('OWN')} className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${storeFilter === 'OWN' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><ICONS.OwnStore className="w-3.5 h-3.5" />Own Stores</button>
-                  <button onClick={() => setStoreFilter('MARKETPLACE')} className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${storeFilter === 'MARKETPLACE' ? 'bg-purple-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><ICONS.Marketplace className="w-3.5 h-3.5" />Marketplaces</button>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredStores.map(store => (
+                <div key={store.id} className="bg-white p-5 border border-gray-100 rounded-2xl shadow-sm">
+                   <h3 className="text-lg font-bold">{store.name}</h3>
+                   <p className="text-sm text-gray-500">{store.location}</p>
                 </div>
-                <p className="text-sm text-gray-500 font-medium">Showing {filteredStores.length} storefronts</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                {filteredStores.map(store => (
-                  <div key={store.id} className="bg-white p-5 border border-gray-100 rounded-2xl hover:shadow-xl hover:-translate-y-1 transition-all group shadow-sm flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className={`p-3 rounded-2xl transition-colors ${store.ownership === 'MARKETPLACE' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'}`}>
-                          {store.ownership === 'MARKETPLACE' ? <ICONS.Marketplace className="w-6 h-6" /> : <ICONS.OwnStore className="w-6 h-6" />}
-                        </div>
-                        <div className="flex items-center gap-2">
-                           {store.ownership === 'MARKETPLACE' && store.credentials?.apiKey && (
-                             <div className="p-1.5 bg-green-50 text-green-600 rounded-lg" title="API Integrated"><ICONS.Key className="w-3.5 h-3.5" /></div>
-                           )}
-                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${store.ownership === 'MARKETPLACE' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>{store.ownership}</span>
-                        </div>
-                      </div>
-                      <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{store.name}</h3>
-                      <div className="mt-3 space-y-2">
-                        <div className="flex items-center gap-2 text-sm text-gray-500"><ICONS.Map className="w-3.5 h-3.5" /><span>{store.location}</span></div>
-                        <div className="flex items-center gap-2 text-sm text-gray-500"><ICONS.Search className="w-3.5 h-3.5" /><span>Type: <span className="text-gray-900 font-medium">{store.type}</span></span></div>
-                        <div className="flex items-center gap-2 text-sm text-gray-500"><ICONS.Products className="w-3.5 h-3.5" /><span>ID: <span className="font-mono">{store.id}</span></span></div>
-                      </div>
-                    </div>
-                    <div className="mt-6 pt-4 border-t border-gray-50 flex items-center justify-between">
-                      <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500" /><span className="text-xs font-bold text-gray-600">Active</span></div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => { setEditingStore(store); setIsStoreModalOpen(true); }} className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors"><ICONS.Edit className="w-4 h-4" /></button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                
-                <button onClick={() => { setEditingStore(null); setIsStoreModalOpen(true); }} className="p-5 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/30 transition-all min-h-[220px]">
-                  <div className="p-3 bg-gray-50 rounded-full"><ICONS.Plus className="w-8 h-8" /></div>
-                  <span className="font-bold text-sm">Add Storefront</span>
-                </button>
-              </div>
+              ))}
             </div>
           )}
 
           {currentView === 'SETTINGS' && (
-            <Settings />
+            <Settings onLogout={() => setIsLoggedIn(false)} />
           )}
         </div>
       </main>
 
       {/* Modals */}
       {isProductModalOpen && (
-        <ProductForm onSave={handleAddProduct} onClose={() => { setIsProductModalOpen(false); setEditingProduct(null); }} initialData={editingProduct || undefined} />
-      )}
-      {isStoreModalOpen && (
-        <StoreForm onSave={handleAddStore} onClose={() => { setIsStoreModalOpen(false); setEditingStore(null); }} initialData={editingStore || undefined} />
-      )}
-      {isMappingModalOpen && mappingProduct && (
-        <StoreMappingModal product={mappingProduct} stores={stores} onSave={handleUpdateMappings} onClose={() => { setIsMappingModalOpen(false); setMappingProduct(null); }} />
+        <ProductForm onSave={(p) => { setProducts(prev => [...prev, p]); setIsProductModalOpen(false); }} onClose={() => setIsProductModalOpen(false)} initialData={editingProduct || undefined} />
       )}
     </div>
   );

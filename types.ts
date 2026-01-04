@@ -117,6 +117,8 @@ export interface Order {
   packingType: string;
   trackingNumber?: string;
   fulfilledOnSource?: boolean;
+  isCombined?: boolean;
+  sourceOrderIds?: string[];
   items: OrderItem[];
   history: AuditLogEntry[];
 }

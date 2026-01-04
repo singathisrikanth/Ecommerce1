@@ -31,7 +31,10 @@ import {
   Calendar,
   History,
   CreditCard,
-  Box
+  Box,
+  GitMerge,
+  Download,
+  ListChecks
 } from 'lucide-react';
 import { Product, Store, ProductStatus, Order } from './types';
 
@@ -196,7 +199,11 @@ export const ICONS = {
   Calendar: Calendar,
   History: History,
   Financials: CreditCard,
-  Packing: Box
+  Packing: Box,
+  ArrowRightLeft: ArrowRightLeft,
+  Merge: GitMerge,
+  Import: Download,
+  Checklist: ListChecks
 };
 
 function HeaderIcon(props: any) { return <ArrowRightLeft {...props} />; }
